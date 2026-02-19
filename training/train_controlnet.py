@@ -284,28 +284,32 @@ def train(config: dict) -> None:
                     }
 
                 # ControlNet forward (runs in fp16 via accelerate autocast)
+                nl_fp16 = noisy_latents.half()
+                hs_fp16 = combined_hidden_states.half()
+                cond_fp16 = cond_images.half()
+                acond_fp16 = {
+                    "text_embeds": pooled_output_2.half(),
+                    "time_ids": add_time_ids.half(),
+                }
+
                 down_block_res, mid_block_res = controlnet(
-                    noisy_latents,
+                    nl_fp16,
                     timesteps,
-                    encoder_hidden_states=combined_hidden_states,
-                    controlnet_cond=cond_images,
-                    added_cond_kwargs=added_cond_kwargs,
+                    encoder_hidden_states=hs_fp16,
+                    controlnet_cond=cond_fp16,
+                    added_cond_kwargs=acond_fp16,
                     return_dict=False,
                 )
 
-                # Cast residuals to fp32 for the fp32 UNet
-                down_block_res = [r.float() for r in down_block_res]
-                mid_block_res = mid_block_res.float()
-
-                # UNet forward with ControlNet conditioning (fp32)
+                # UNet forward — also feed fp16 so attention layers match
                 model_pred = unet(
-                    noisy_latents,
+                    nl_fp16,
                     timesteps,
-                    encoder_hidden_states=combined_hidden_states,
-                    down_block_additional_residuals=down_block_res,
-                    mid_block_additional_residual=mid_block_res,
-                    added_cond_kwargs=added_cond_kwargs,
-                ).sample
+                    encoder_hidden_states=hs_fp16,
+                    down_block_additional_residuals=[r.half() for r in down_block_res],
+                    mid_block_additional_residual=mid_block_res.half(),
+                    added_cond_kwargs=acond_fp16,
+                ).sample.float()  # back to fp32 for loss
 
                 loss = torch.nn.functional.mse_loss(
                     model_pred.float(), noise.float()
