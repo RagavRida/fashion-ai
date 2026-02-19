@@ -283,7 +283,16 @@ def train(config: dict) -> None:
                         "time_ids": add_time_ids,
                     }
 
-                with torch.cuda.amp.autocast():
+                # Prepare fp16 tensors for ControlNet+UNet (all frozen, run inside autocast)
+                nl_fp16 = noisy_latents.half()
+                hs_fp16 = combined_hidden_states.half()
+                cond_fp16 = cond_images.half()
+                acond_fp16 = {
+                    "text_embeds": pooled_output_2.half(),
+                    "time_ids": add_time_ids.half(),
+                }
+
+                with torch.amp.autocast("cuda"):
                     down_block_res, mid_block_res = controlnet(
                         nl_fp16,
                         timesteps,
