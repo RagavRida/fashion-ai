@@ -19,7 +19,7 @@ training:
   output_dir: "checkpoints/fashion_controlnet"
   logging_dir: "outputs/logs/controlnet"
   resolution: 512
-  train_batch_size: 4         # budget: 4 instead of 2 (better VRAM utilization)
+  train_batch_size: 2         # budget: reduced for fp32 VRAM budget
   gradient_accumulation_steps: 2
   num_train_epochs: 50
   max_train_steps: 1500       # budget: 1500 steps @ ~6s/it ≈ 2.5h on A100
@@ -35,9 +35,9 @@ training:
   proportional_attention: true
 
 precision:
-  mixed_precision: "fp16"
+  mixed_precision: "no"       # fp32 training — avoids Half/Float conflicts from Accelerate autocast
   gradient_checkpointing: true
-  enable_xformers: true
+  enable_xformers: false      # disabled for fp32 training
   use_8bit_adam: false
 
 checkpointing:
