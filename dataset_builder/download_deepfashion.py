@@ -36,7 +36,7 @@ from tqdm import tqdm
 DEEPFASHION_SUBSETS = {
     "category_attribute": {
         "description": "Category and Attribute Prediction benchmark",
-        "huggingface_id": "detection-datasets/deepfashion-multimodal",
+        "huggingface_id": "Marqo/deepfashion-multimodal",   # working mirror
         "kaggle_dataset": "paramaggarwal/fashion-product-images-dataset",
         "expected_images": 289222,
     },
@@ -53,6 +53,7 @@ DEEPFASHION_SUBSETS = {
         "expected_images": 325000,
     },
 }
+
 
 HF_TOKEN_ENV = "HF_TOKEN"
 KAGGLE_JSON_PATH = Path.home() / ".kaggle" / "kaggle.json"
