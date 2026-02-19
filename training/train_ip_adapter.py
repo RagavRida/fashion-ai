@@ -237,6 +237,7 @@ def train(config: dict) -> None:
     from torch.utils.data import DataLoader
     from transformers import (
         CLIPTextModel,
+        CLIPTextModelWithProjection,
         CLIPTokenizer,
         CLIPVisionModelWithProjection,
         CLIPImageProcessor,
@@ -268,15 +269,17 @@ def train(config: dict) -> None:
     model_id = config["model"]["base_model"]
     image_encoder_id = config["model"]["image_encoder"]
 
-    # ── Load components ──
-    tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
-    text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
+    # ── Load components (SDXL: dual text encoders) ──
+    tokenizer   = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
+    tokenizer_2 = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
+    text_encoder   = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
+    text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(model_id, subfolder="text_encoder_2")
+    vae  = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
     noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
     # CLIP image encoder
-    image_encoder = CLIPVisionModelWithProjection.from_pretrained(image_encoder_id)
+    image_encoder  = CLIPVisionModelWithProjection.from_pretrained(image_encoder_id)
     clip_processor = CLIPImageProcessor.from_pretrained(image_encoder_id)
 
     # ── Load LoRA (merge into UNet so from_unet works cleanly) ──
@@ -327,6 +330,7 @@ def train(config: dict) -> None:
     # ── Freeze everything except IP-Adapter modules ──
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    text_encoder_2.requires_grad_(False)
     image_encoder.requires_grad_(False)
     unet.requires_grad_(False)
 
@@ -377,8 +381,9 @@ def train(config: dict) -> None:
     # Keep all frozen models in fp32 — avoids Half/Float conflicts
     vae = vae.to(accelerator.device)          # fp32, frozen
     unet = unet.to(accelerator.device)        # fp32, frozen params
-    text_encoder = text_encoder.to(accelerator.device)   # fp32, frozen
-    image_encoder = image_encoder.to(accelerator.device) # fp32, frozen
+    text_encoder   = text_encoder.to(accelerator.device)    # fp32, frozen
+    text_encoder_2 = text_encoder_2.to(accelerator.device)  # fp32, frozen
+    image_encoder  = image_encoder.to(accelerator.device)   # fp32, frozen
 
     global_step = 0
     max_steps = config["training"]["max_train_steps"]
@@ -415,13 +420,26 @@ def train(config: dict) -> None:
                 # Project to IP tokens (trainable — stays in grad graph)
                 ip_tokens = image_proj(clip_feats)  # [B, num_tokens, cross_attn_dim]
 
-                # Text encoding
+                # Text encoding — SDXL dual encoder
                 with torch.no_grad():
-                    text_embeds = text_encoder(
-                        batch["input_ids"].to(accelerator.device)
-                    )[0].float()
+                    enc1_out = text_encoder(batch["input_ids"].to(accelerator.device))
+                    enc1_hidden = enc1_out.last_hidden_state.float()  # [B, 77, 768]
 
-                # Concatenate text + image tokens (fp32)
+                    prompts = tokenizer.batch_decode(
+                        batch["input_ids"], skip_special_tokens=True
+                    )
+                    ids2 = tokenizer_2(
+                        prompts, truncation=True,
+                        max_length=tokenizer_2.model_max_length,
+                        padding="max_length", return_tensors="pt"
+                    ).input_ids.to(accelerator.device)
+                    enc2_out = text_encoder_2(ids2)
+                    enc2_hidden = enc2_out.last_hidden_state.float()  # [B, 77, 1280]
+
+                    # Combined: [B, 77, 2048]
+                    text_embeds = torch.cat([enc1_hidden, enc2_hidden], dim=-1)
+
+                # Concatenate text [B,77,2048] + ip_tokens [B,16,2048] along seq dim
                 encoder_hidden_states = torch.cat([text_embeds, ip_tokens], dim=1).float()
 
                 # UNet forward — NO no_grad: ip_tokens must stay in computation graph
