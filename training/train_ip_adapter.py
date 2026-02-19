@@ -279,11 +279,16 @@ def train(config: dict) -> None:
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(image_encoder_id)
     clip_processor = CLIPImageProcessor.from_pretrained(image_encoder_id)
 
-    # ── Load LoRA ──
+    # ── Load LoRA (merge into UNet so from_unet works cleanly) ──
     lora_weights = config["model"].get("lora_weights")
     if lora_weights and Path(lora_weights).exists():
         from peft import PeftModel
+        from diffusers.models.attention_processor import AttnProcessor2_0
         unet = PeftModel.from_pretrained(unet, lora_weights)
+        unet = unet.merge_and_unload()
+        # Reset attn processors to standard fp32-compatible ones
+        unet.set_attn_processor(AttnProcessor2_0())
+        logger.info(f"LoRA weights merged into UNet from {lora_weights}")
 
     # ── IP-Adapter modules ──
     num_tokens = config["model"]["num_tokens"]
@@ -306,7 +311,8 @@ def train(config: dict) -> None:
                 num_tokens=num_tokens,
             )
         else:
-            attn_procs[name] = unet.attn_processors[name]
+            from diffusers.models.attention_processor import AttnProcessor2_0
+            attn_procs[name] = AttnProcessor2_0()
     unet.set_attn_processor(attn_procs)
 
     # ── Freeze everything except IP-Adapter modules ──
@@ -359,10 +365,11 @@ def train(config: dict) -> None:
         image_proj, optimizer, loader, lr_scheduler
     )
 
-    vae = vae.to(accelerator.device, dtype=torch.float16)
-    unet = unet.to(accelerator.device)
-    text_encoder = text_encoder.to(accelerator.device)
-    image_encoder = image_encoder.to(accelerator.device)
+    # Keep all frozen models in fp32 — avoids Half/Float conflicts
+    vae = vae.to(accelerator.device)          # fp32, frozen
+    unet = unet.to(accelerator.device)        # fp32, frozen params
+    text_encoder = text_encoder.to(accelerator.device)   # fp32, frozen
+    image_encoder = image_encoder.to(accelerator.device) # fp32, frozen
 
     global_step = 0
     max_steps = config["training"]["max_train_steps"]
@@ -379,7 +386,7 @@ def train(config: dict) -> None:
             with accelerator.accumulate(image_proj):
                 with torch.no_grad():
                     latents = vae.encode(
-                        batch["pixel_values"].to(dtype=torch.float16)
+                        batch["pixel_values"].to(device=accelerator.device, dtype=torch.float32)
                     ).latent_dist.sample() * vae.config.scaling_factor
 
                 noise = torch.randn_like(latents)
@@ -393,26 +400,35 @@ def train(config: dict) -> None:
                 # CLIP image embeddings
                 with torch.no_grad():
                     clip_feats = image_encoder(
-                        batch["clip_pixel_values"].to(accelerator.device)
-                    ).image_embeds
+                        batch["clip_pixel_values"].to(device=accelerator.device, dtype=torch.float32)
+                    ).image_embeds.float()
 
-                # Project to IP tokens
+                # Project to IP tokens (trainable — stays in grad graph)
                 ip_tokens = image_proj(clip_feats)  # [B, num_tokens, cross_attn_dim]
 
                 # Text encoding
                 with torch.no_grad():
-                    text_embeds = text_encoder(batch["input_ids"])[0]
+                    text_embeds = text_encoder(
+                        batch["input_ids"].to(accelerator.device)
+                    )[0].float()
 
-                # Concatenate text + image tokens
-                encoder_hidden_states = torch.cat([text_embeds, ip_tokens], dim=1)
+                # Concatenate text + image tokens (fp32)
+                encoder_hidden_states = torch.cat([text_embeds, ip_tokens], dim=1).float()
 
+                # UNet forward — NO no_grad: ip_tokens must stay in computation graph
                 model_pred = unet(
-                    noisy_latents,
+                    noisy_latents.float(),
                     timesteps,
                     encoder_hidden_states=encoder_hidden_states,
                 ).sample
 
                 loss = torch.nn.functional.mse_loss(model_pred.float(), noise.float())
+
+                if not torch.isfinite(loss):
+                    logger.warning(f"NaN/Inf loss at step {global_step}, skipping")
+                    optimizer.zero_grad()
+                    continue
+
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
