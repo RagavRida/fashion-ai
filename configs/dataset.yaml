@@ -60,4 +60,4 @@ splits:
 limits:
   max_train_samples: null      # null = use all
   max_val_samples: 2000
-  min_image_size: 256          # skip images smaller than this
+  min_image_size: 64           # skip images smaller than this (DeepFashion images are ~153px wide)
