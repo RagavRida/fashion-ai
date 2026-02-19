@@ -114,7 +114,7 @@ print(f"Reference image: {ref_candidates[0]}")
 clip_input = clip_processor(images=ref_image, return_tensors="pt")
 clip_pixels = clip_input.pixel_values.to(DEVICE, dtype=DTYPE)
 with torch.no_grad():
-    clip_feats = image_encoder(clip_pixels).image_embeds.float()  # [1, 1024]
+    clip_feats = image_encoder(clip_pixels).image_embeds  # fp16, matches image_proj
 
 ip_tokens = image_proj(clip_feats)  # [1, 16, 2048]
 
