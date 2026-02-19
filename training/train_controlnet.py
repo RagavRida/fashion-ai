@@ -244,7 +244,9 @@ def train(config: dict) -> None:
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Conditioning dropout for CFG training
-                cond_images = batch["conditioning_pixel_values"]
+                cond_images = batch["conditioning_pixel_values"].to(
+                    device=accelerator.device, dtype=torch.float32
+                )
                 if conditioning_dropout > 0:
                     drop_mask = torch.rand(bsz) < conditioning_dropout
                     cond_images = cond_images.clone()
@@ -281,7 +283,7 @@ def train(config: dict) -> None:
                         "time_ids": add_time_ids,
                     }
 
-                # ControlNet forward
+                # ControlNet forward (runs in fp16 via accelerate autocast)
                 down_block_res, mid_block_res = controlnet(
                     noisy_latents,
                     timesteps,
@@ -291,7 +293,11 @@ def train(config: dict) -> None:
                     return_dict=False,
                 )
 
-                # UNet forward with ControlNet conditioning
+                # Cast residuals to fp32 for the fp32 UNet
+                down_block_res = [r.float() for r in down_block_res]
+                mid_block_res = mid_block_res.float()
+
+                # UNet forward with ControlNet conditioning (fp32)
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
