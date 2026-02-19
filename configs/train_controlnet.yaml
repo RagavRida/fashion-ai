@@ -4,7 +4,7 @@
 
 model:
   base_model: "stabilityai/stable-diffusion-xl-base-1.0"
-  lora_weights: "checkpoints/fashion_lora"   # load pre-trained LoRA first
+  lora_weights: "checkpoints/fashion_lora/unet_lora_final"   # PEFT adapter with adapter_config.json
   controlnet_model_name_or_path: null        # null = train from scratch using base UNet
   conditioning_channels: 3                   # RGB canny/edge map
 
