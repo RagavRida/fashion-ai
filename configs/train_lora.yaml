@@ -30,8 +30,8 @@ training:
   resolution: 512
   train_batch_size: 4
   gradient_accumulation_steps: 4
-  num_train_epochs: 100
-  max_train_steps: 80000
+  num_train_epochs: 30        # budget: 30 instead of 100
+  max_train_steps: 12000      # budget: 12K instead of 80K (~3.5h on A100)
   learning_rate: 1.0e-4
   lr_scheduler: "cosine_with_restarts"
   lr_warmup_steps: 500
@@ -50,9 +50,9 @@ precision:
   use_8bit_adam: false
 
 checkpointing:
-  save_steps: 2000
-  save_total_limit: 5
-  resume_from_checkpoint: "latest"   # null | latest | path
+  save_steps: 1000
+  save_total_limit: 3
+  resume_from_checkpoint: "latest"
 
 logging:
   report_to: "wandb"
@@ -65,8 +65,8 @@ validation:
     - "a upcycled denim jacket, cropped, streetwear style, high realism"
     - "a recycled cotton dress, floral pattern, summer casual, eco-friendly"
     - "a formal blazer, minimalist design, professional, high realism"
-  num_validation_images: 4
-  validation_steps: 2000
+  num_validation_images: 2
+  validation_steps: 1000
 
 data:
   train_data_dir: "data/processed"
@@ -75,3 +75,4 @@ data:
   image_column: "image_path"
   dataloader_num_workers: 8
   shuffle: true
+  max_train_samples: 10000     # budget: 10K subset of 42K

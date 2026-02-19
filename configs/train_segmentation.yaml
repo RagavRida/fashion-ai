@@ -14,15 +14,16 @@ training:
   output_dir: "checkpoints/segmentation"
   logging_dir: "outputs/logs/segmentation"
   resolution: 512
-  train_batch_size: 16
-  num_train_epochs: 50
+  train_batch_size: 32        # larger batch = faster on A100
+  num_train_epochs: 15        # budget: 15 instead of 50
   learning_rate: 1.0e-4
   lr_scheduler: "reduce_on_plateau"
   lr_scheduler_patience: 5
   lr_scheduler_factor: 0.5
   adam_weight_decay: 1.0e-4
   max_grad_norm: 5.0
-  early_stopping_patience: 10
+  early_stopping_patience: 5
+  max_train_samples: 10000    # budget: 10K subset
 
   # Loss
   loss: "combo"               # bce | dice | combo | focal_dice
