@@ -300,13 +300,30 @@ def train(config: dict, dry_run: bool = False) -> None:
                 # Predict noise
                 if use_sdxl and text_encoder_2 is not None:
                     enc2_out = text_encoder_2(batch.get("input_ids_2", batch["input_ids"]))
-                    encoder_hidden_states_2 = enc2_out[0]
+                    # enc2_out[0] = last_hidden_state [B, seq, D2]
+                    # enc2_out[1] = pooled output [B, D2] for added_cond_kwargs
+                    encoder_hidden_states_2 = enc2_out[0]  # [B, 77, 1280]
+                    pooled_output_2 = enc2_out[1]           # [B, 1280]
+                    # SDXL UNet expects cat of both text encoder hidden states along dim=-1
+                    # enc1: [B, 77, 768], enc2: [B, 77, 1280] → [B, 77, 2048]
+                    combined_hidden_states = torch.cat(
+                        [encoder_hidden_states, encoder_hidden_states_2], dim=-1
+                    )
+                    # SDXL also needs time_ids and text_embeds in added_cond_kwargs
+                    bs = latents.shape[0]
+                    add_time_ids = torch.tensor(
+                        [[512, 512, 0, 0, 512, 512]], dtype=torch.float32,
+                        device=latents.device
+                    ).repeat(bs, 1)
+                    added_cond_kwargs = {
+                        "text_embeds": pooled_output_2,
+                        "time_ids": add_time_ids,
+                    }
                     model_pred = unet(
                         noisy_latents,
                         timesteps,
-                        encoder_hidden_states=torch.cat(
-                            [encoder_hidden_states, encoder_hidden_states_2], dim=-1
-                        ),
+                        encoder_hidden_states=combined_hidden_states,
+                        added_cond_kwargs=added_cond_kwargs,
                     ).sample
                 else:
                     model_pred = unet(

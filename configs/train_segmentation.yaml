@@ -7,7 +7,7 @@ model:
   encoder: "resnet34"         # resnet18 | resnet34 | resnet50
   pretrained_encoder: true
   in_channels: 3
-  num_classes: 2              # background | garment
+  num_classes: 1              # binary: garment vs background (BCE loss)
   output_dir: "checkpoints/garment_segmentation.pth"
 
 training:
