@@ -167,6 +167,10 @@ def train(config: dict) -> None:
         controlnet = ControlNetModel.from_unet(unet)
         logger.info("ControlNet initialized from (LoRA-merged) UNet weights")
 
+    # Reset ControlNet attention processor too (inherits from UNet which may have xformers)
+    controlnet.set_attn_processor(AttnProcessor2_0())
+    logger.info("Reset ControlNet attention processors to AttnProcessor2_0")
+
     # ── Freeze non-ControlNet weights ──
     vae.requires_grad_(False)
     unet.requires_grad_(False)
@@ -290,25 +294,32 @@ def train(config: dict) -> None:
                         "time_ids": add_time_ids,
                     }
 
-                # ControlNet forward pass (trainable, runs under Accelerate mixed precision)
+                # ControlNet forward pass — explicitly fp32 inputs
+                hs_f32 = combined_hidden_states.float()
+                nl_f32 = noisy_latents.float()
+                cond_f32 = cond_images.float()
+                acond_f32 = {
+                    "text_embeds": pooled_output_2.float(),
+                    "time_ids": add_time_ids.float(),
+                }
                 down_block_res, mid_block_res = controlnet(
-                    noisy_latents,
+                    nl_f32,
                     timesteps,
-                    encoder_hidden_states=combined_hidden_states,
-                    controlnet_cond=cond_images,
-                    added_cond_kwargs=added_cond_kwargs,
+                    encoder_hidden_states=hs_f32,
+                    controlnet_cond=cond_f32,
+                    added_cond_kwargs=acond_f32,
                     return_dict=False,
                 )
 
-                # UNet forward pass (frozen, fp32 — no autocast to avoid SDXL overflow)
+                # UNet forward pass (frozen, fp32)
                 with torch.no_grad():
                     model_pred = unet(
-                        noisy_latents,
+                        nl_f32,
                         timesteps,
-                        encoder_hidden_states=combined_hidden_states,
+                        encoder_hidden_states=hs_f32,
                         down_block_additional_residuals=[r.float() for r in down_block_res],
                         mid_block_additional_residual=mid_block_res.float(),
-                        added_cond_kwargs=added_cond_kwargs,
+                        added_cond_kwargs=acond_f32,
                     ).sample
 
                 loss = torch.nn.functional.mse_loss(
