@@ -154,6 +154,11 @@ def train(config: dict) -> None:
         logger.info(f"LoRA weights merged into UNet from {lora_weights}")
 
     # ── Initialize ControlNet from UNet ──
+    # Reset attention processors to standard fp32-compatible ones before from_unet()
+    # (LoRA training may have set xformers/fp16 processors that cause dtype conflicts)
+    from diffusers.models.attention_processor import AttnProcessor2_0
+    unet.set_attn_processor(AttnProcessor2_0())
+
     controlnet_path = config["model"].get("controlnet_model_name_or_path")
     if controlnet_path and Path(str(controlnet_path)).exists():
         controlnet = ControlNetModel.from_pretrained(controlnet_path)
