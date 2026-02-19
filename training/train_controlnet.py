@@ -148,7 +148,8 @@ def train(config: dict) -> None:
     if lora_weights and Path(lora_weights).exists():
         from peft import PeftModel
         unet = PeftModel.from_pretrained(unet, lora_weights)
-        logger.info(f"LoRA weights loaded from {lora_weights}")
+        unet = unet.merge_and_unload()   # bake LoRA into base weights → plain UNet
+        logger.info(f"LoRA weights merged into UNet from {lora_weights}")
 
     # ── Initialize ControlNet from UNet ──
     controlnet_path = config["model"].get("controlnet_model_name_or_path")
@@ -157,7 +158,7 @@ def train(config: dict) -> None:
         logger.info(f"ControlNet loaded from {controlnet_path}")
     else:
         controlnet = ControlNetModel.from_unet(unet)
-        logger.info("ControlNet initialized from UNet weights")
+        logger.info("ControlNet initialized from (LoRA-merged) UNet weights")
 
     # ── Freeze non-ControlNet weights ──
     vae.requires_grad_(False)
