@@ -283,33 +283,24 @@ def train(config: dict) -> None:
                         "time_ids": add_time_ids,
                     }
 
-                # ControlNet forward (runs in fp16 via accelerate autocast)
-                nl_fp16 = noisy_latents.half()
-                hs_fp16 = combined_hidden_states.half()
-                cond_fp16 = cond_images.half()
-                acond_fp16 = {
-                    "text_embeds": pooled_output_2.half(),
-                    "time_ids": add_time_ids.half(),
-                }
+                with torch.cuda.amp.autocast():
+                    down_block_res, mid_block_res = controlnet(
+                        nl_fp16,
+                        timesteps,
+                        encoder_hidden_states=hs_fp16,
+                        controlnet_cond=cond_fp16,
+                        added_cond_kwargs=acond_fp16,
+                        return_dict=False,
+                    )
 
-                down_block_res, mid_block_res = controlnet(
-                    nl_fp16,
-                    timesteps,
-                    encoder_hidden_states=hs_fp16,
-                    controlnet_cond=cond_fp16,
-                    added_cond_kwargs=acond_fp16,
-                    return_dict=False,
-                )
-
-                # UNet forward — also feed fp16 so attention layers match
-                model_pred = unet(
-                    nl_fp16,
-                    timesteps,
-                    encoder_hidden_states=hs_fp16,
-                    down_block_additional_residuals=[r.half() for r in down_block_res],
-                    mid_block_additional_residual=mid_block_res.half(),
-                    added_cond_kwargs=acond_fp16,
-                ).sample.float()  # back to fp32 for loss
+                    model_pred = unet(
+                        nl_fp16,
+                        timesteps,
+                        encoder_hidden_states=hs_fp16,
+                        down_block_additional_residuals=[r for r in down_block_res],
+                        mid_block_additional_residual=mid_block_res,
+                        added_cond_kwargs=acond_fp16,
+                    ).sample
 
                 loss = torch.nn.functional.mse_loss(
                     model_pred.float(), noise.float()
