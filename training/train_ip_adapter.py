@@ -433,11 +433,23 @@ def train(config: dict) -> None:
                         max_length=tokenizer_2.model_max_length,
                         padding="max_length", return_tensors="pt"
                     ).input_ids.to(accelerator.device)
-                    enc2_out = text_encoder_2(ids2)
-                    enc2_hidden = enc2_out.last_hidden_state.float()  # [B, 77, 1280]
+                    enc2_out = text_encoder_2(ids2, output_hidden_states=True)
+                    enc2_hidden = enc2_out.hidden_states[-2].float()   # [B, 77, 1280]
+                    pooled_text_embeds = enc2_out.text_embeds.float()  # [B, 1280]
 
-                    # Combined: [B, 77, 2048]
+                    # Combined encoder_hidden_states: [B, 77, 2048]
                     text_embeds = torch.cat([enc1_hidden, enc2_hidden], dim=-1)
+
+                # SDXL requires added_cond_kwargs with pooled embeds + time_ids
+                res = config["training"]["resolution"]
+                time_ids = torch.tensor(
+                    [[res, res, 0, 0, res, res]] * bsz,
+                    dtype=torch.float32, device=accelerator.device
+                )
+                added_cond_kwargs = {
+                    "text_embeds": pooled_text_embeds,
+                    "time_ids": time_ids,
+                }
 
                 # Concatenate text [B,77,2048] + ip_tokens [B,16,2048] along seq dim
                 encoder_hidden_states = torch.cat([text_embeds, ip_tokens], dim=1).float()
@@ -447,7 +459,9 @@ def train(config: dict) -> None:
                     noisy_latents.float(),
                     timesteps,
                     encoder_hidden_states=encoder_hidden_states,
+                    added_cond_kwargs=added_cond_kwargs,
                 ).sample
+
 
                 loss = torch.nn.functional.mse_loss(model_pred.float(), noise.float())
 
