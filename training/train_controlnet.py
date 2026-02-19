@@ -210,10 +210,12 @@ def train(config: dict) -> None:
     controlnet, optimizer, loader, lr_scheduler = accelerator.prepare(
         controlnet, optimizer, loader, lr_scheduler
     )
-    vae = vae.half().to(accelerator.device)
-    unet = unet.half().to(accelerator.device)
-    text_encoder = text_encoder.half().to(accelerator.device)
-    text_encoder_2 = text_encoder_2.half().to(accelerator.device)
+    # Keep frozen models in fp32 — SDXL UNet overflows fp16 when converted manually.
+    # Only the trainable ControlNet uses Accelerate's native mixed precision.
+    vae = vae.to(accelerator.device)       # fp32, frozen
+    unet = unet.to(accelerator.device)     # fp32, frozen
+    text_encoder = text_encoder.to(accelerator.device)    # fp32, frozen
+    text_encoder_2 = text_encoder_2.to(accelerator.device)  # fp32, frozen
 
     global_step = 0
     max_steps = config["training"]["max_train_steps"]
@@ -283,32 +285,25 @@ def train(config: dict) -> None:
                         "time_ids": add_time_ids,
                     }
 
-                # Prepare fp16 tensors for ControlNet+UNet (all frozen, run inside autocast)
-                nl_fp16 = noisy_latents.half()
-                hs_fp16 = combined_hidden_states.half()
-                cond_fp16 = cond_images.half()
-                acond_fp16 = {
-                    "text_embeds": pooled_output_2.half(),
-                    "time_ids": add_time_ids.half(),
-                }
+                # ControlNet forward pass (trainable, runs under Accelerate mixed precision)
+                down_block_res, mid_block_res = controlnet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=combined_hidden_states,
+                    controlnet_cond=cond_images,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
+                )
 
-                with torch.amp.autocast("cuda"):
-                    down_block_res, mid_block_res = controlnet(
-                        nl_fp16,
-                        timesteps,
-                        encoder_hidden_states=hs_fp16,
-                        controlnet_cond=cond_fp16,
-                        added_cond_kwargs=acond_fp16,
-                        return_dict=False,
-                    )
-
+                # UNet forward pass (frozen, fp32 — no autocast to avoid SDXL overflow)
+                with torch.no_grad():
                     model_pred = unet(
-                        nl_fp16,
+                        noisy_latents,
                         timesteps,
-                        encoder_hidden_states=hs_fp16,
-                        down_block_additional_residuals=[r for r in down_block_res],
-                        mid_block_additional_residual=mid_block_res,
-                        added_cond_kwargs=acond_fp16,
+                        encoder_hidden_states=combined_hidden_states,
+                        down_block_additional_residuals=[r.float() for r in down_block_res],
+                        mid_block_additional_residual=mid_block_res.float(),
+                        added_cond_kwargs=added_cond_kwargs,
                     ).sample
 
                 loss = torch.nn.functional.mse_loss(
