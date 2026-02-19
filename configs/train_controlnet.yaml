@@ -20,12 +20,12 @@ training:
   logging_dir: "outputs/logs/controlnet"
   resolution: 512
   train_batch_size: 4         # budget: 4 instead of 2 (better VRAM utilization)
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 2
   num_train_epochs: 50
   max_train_steps: 1500       # budget: 1500 steps @ ~6s/it ≈ 2.5h on A100
   learning_rate: 1.0e-5
   lr_scheduler: "constant_with_warmup"
-  lr_warmup_steps: 200        # budget: shorter warmup
+  lr_warmup_steps: 100        # reduced: earlier training signal
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_weight_decay: 1.0e-2

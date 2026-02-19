@@ -315,6 +315,11 @@ def train(config: dict) -> None:
                     model_pred.float(), noise.float()
                 )
 
+                if not torch.isfinite(loss):
+                    logger.warning(f"NaN/Inf loss at step {global_step}, skipping backward")
+                    optimizer.zero_grad()
+                    continue
+
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
