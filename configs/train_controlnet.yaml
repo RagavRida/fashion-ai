@@ -36,7 +36,7 @@ training:
 
 precision:
   mixed_precision: "no"       # fp32 training — avoids Half/Float conflicts from Accelerate autocast
-  gradient_checkpointing: true
+  gradient_checkpointing: false  # disabled: causes dtype mismatch in grad checkpoint recompute
   enable_xformers: false      # disabled for fp32 training
   use_8bit_adam: false
 
