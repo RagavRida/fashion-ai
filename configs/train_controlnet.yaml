@@ -19,13 +19,13 @@ training:
   output_dir: "checkpoints/fashion_controlnet"
   logging_dir: "outputs/logs/controlnet"
   resolution: 512
-  train_batch_size: 2
+  train_batch_size: 4         # budget: 4 instead of 2 (better VRAM utilization)
   gradient_accumulation_steps: 8
   num_train_epochs: 50
-  max_train_steps: 50000
+  max_train_steps: 1500       # budget: 1500 steps @ ~6s/it ≈ 2.5h on A100
   learning_rate: 1.0e-5
   lr_scheduler: "constant_with_warmup"
-  lr_warmup_steps: 1000
+  lr_warmup_steps: 200        # budget: shorter warmup
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_weight_decay: 1.0e-2
@@ -41,7 +41,7 @@ precision:
   use_8bit_adam: false
 
 checkpointing:
-  save_steps: 2000
+  save_steps: 500             # budget: save every 500 steps
   save_total_limit: 3
   resume_from_checkpoint: "latest"
 
@@ -52,7 +52,7 @@ logging:
   logging_steps: 100
 
 validation:
-  validation_steps: 2000
+  validation_steps: 500
   num_validation_images: 4
   validation_image: "data/processed/edges/val_sample_001.png"
   validation_prompt: "a upcycled denim jacket, cropped, streetwear style"
