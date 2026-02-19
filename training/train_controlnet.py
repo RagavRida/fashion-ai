@@ -233,9 +233,9 @@ def train(config: dict) -> None:
                 # Encode to latents
                 with torch.no_grad():
                     latents = vae.encode(
-                        batch["pixel_values"].to(device=accelerator.device, dtype=torch.float16)
+                        batch["pixel_values"].to(device=accelerator.device, dtype=torch.float32)
                     ).latent_dist.sample() * vae.config.scaling_factor
-                    latents = latents.float()  # back to fp32 for UNet
+                    # latents are fp32 — matches fp32 frozen UNet
 
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
