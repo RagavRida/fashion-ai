@@ -108,7 +108,7 @@ def train(config: dict) -> None:
     )
     from torch.optim import AdamW
     from torch.utils.data import DataLoader
-    from transformers import CLIPTextModel, CLIPTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
     set_seed(42)
 
@@ -138,7 +138,9 @@ def train(config: dict) -> None:
     # ── Load UNet + tokenizer ──
     logger.info(f"Loading base model: {model_id}")
     tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
+    tokenizer_2 = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
     text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
+    text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(model_id, subfolder="text_encoder_2")
     vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
     noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
@@ -164,6 +166,7 @@ def train(config: dict) -> None:
     vae.requires_grad_(False)
     unet.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    text_encoder_2.requires_grad_(False)
     controlnet.train()
 
     if config["precision"]["gradient_checkpointing"]:
@@ -210,6 +213,7 @@ def train(config: dict) -> None:
     vae = vae.to(accelerator.device, dtype=torch.float16)
     unet = unet.to(accelerator.device)
     text_encoder = text_encoder.to(accelerator.device)
+    text_encoder_2 = text_encoder_2.to(accelerator.device)
 
     global_step = 0
     max_steps = config["training"]["max_train_steps"]
@@ -245,16 +249,44 @@ def train(config: dict) -> None:
                     cond_images = cond_images.clone()
                     cond_images[drop_mask] = 0.0  # zero out conditioning
 
-                # Text encoding
+                # Text encoding — SDXL dual encoder
                 with torch.no_grad():
-                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    enc1_out = text_encoder(batch["input_ids"])
+                    encoder_hidden_states = enc1_out.last_hidden_state  # [B, 77, 768]
+
+                    # Tokenize with tokenizer_2 on the fly
+                    prompts = tokenizer.batch_decode(
+                        batch["input_ids"], skip_special_tokens=True
+                    )
+                    ids2 = tokenizer_2(
+                        prompts, truncation=True,
+                        max_length=tokenizer_2.model_max_length,
+                        padding="max_length", return_tensors="pt"
+                    ).input_ids.to(accelerator.device)
+                    enc2_out = text_encoder_2(ids2)
+                    encoder_hidden_states_2 = enc2_out.last_hidden_state  # [B, 77, 1280]
+                    pooled_output_2 = enc2_out.text_embeds               # [B, 1280]
+
+                    combined_hidden_states = torch.cat(
+                        [encoder_hidden_states, encoder_hidden_states_2], dim=-1
+                    )  # [B, 77, 2048]
+                    bs = latents.shape[0]
+                    add_time_ids = torch.tensor(
+                        [[512, 512, 0, 0, 512, 512]], dtype=torch.float32,
+                        device=latents.device
+                    ).repeat(bs, 1)
+                    added_cond_kwargs = {
+                        "text_embeds": pooled_output_2,
+                        "time_ids": add_time_ids,
+                    }
 
                 # ControlNet forward
                 down_block_res, mid_block_res = controlnet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=combined_hidden_states,
                     controlnet_cond=cond_images,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )
 
@@ -262,9 +294,10 @@ def train(config: dict) -> None:
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=combined_hidden_states,
                     down_block_additional_residuals=down_block_res,
                     mid_block_additional_residual=mid_block_res,
+                    added_cond_kwargs=added_cond_kwargs,
                 ).sample
 
                 loss = torch.nn.functional.mse_loss(
