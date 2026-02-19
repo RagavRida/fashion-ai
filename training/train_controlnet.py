@@ -211,9 +211,9 @@ def train(config: dict) -> None:
         controlnet, optimizer, loader, lr_scheduler
     )
     vae = vae.to(accelerator.device, dtype=torch.float16)
-    unet = unet.to(accelerator.device, dtype=torch.float16)
-    text_encoder = text_encoder.to(accelerator.device, dtype=torch.float16)
-    text_encoder_2 = text_encoder_2.to(accelerator.device, dtype=torch.float16)
+    unet = unet.to(accelerator.device)
+    text_encoder = text_encoder.to(accelerator.device)
+    text_encoder_2 = text_encoder_2.to(accelerator.device)
 
     global_step = 0
     max_steps = config["training"]["max_train_steps"]
@@ -231,8 +231,9 @@ def train(config: dict) -> None:
                 # Encode to latents
                 with torch.no_grad():
                     latents = vae.encode(
-                        batch["pixel_values"].to(dtype=torch.float16)
+                        batch["pixel_values"].to(device=accelerator.device, dtype=torch.float16)
                     ).latent_dist.sample() * vae.config.scaling_factor
+                    latents = latents.float()  # back to fp32 for UNet
 
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
