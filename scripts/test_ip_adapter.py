@@ -93,7 +93,14 @@ for name in pipe.unet.attn_processors.keys():
     else:
         attn_procs[name] = AttnProcessor2_0()
 pipe.unet.set_attn_processor(attn_procs)
+
+# Cast all IP-Adapter modules to fp16 to match the pipeline's autocast dtype
+image_proj = image_proj.to(DEVICE, dtype=DTYPE)
+for proc in pipe.unet.attn_processors.values():
+    if isinstance(proc, IPAdapterAttnProcessor):
+        proc.to(dtype=DTYPE)
 print("IP-Adapter loaded ✓")
+
 
 # ── Pick a reference image from the dataset ───────────────────────────────────
 ref_candidates = sorted(Path("data/processed/images_512").glob("*.jpg"))[:5]
