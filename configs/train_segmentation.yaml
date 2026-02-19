@@ -52,10 +52,12 @@ logging:
   logging_steps: 50
 
 metrics:
-  - "iou"
-  - "dice"
-  - "pixel_accuracy"
+  names:
+    - "iou"
+    - "dice"
+    - "pixel_accuracy"
   target_iou: 0.70
+
 
 data:
   train_data_dir: "data/processed"
