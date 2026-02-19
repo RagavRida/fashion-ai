@@ -302,11 +302,19 @@ def train(config: dict) -> None:
     )
 
     # Replace UNet attention processors with IP-Adapter processors
+    # For SDXL, attention_head_dim is a tuple — derive hidden_size per block from to_k weight shape
     attn_procs = {}
+    unet_sd = unet.state_dict()
     for name in unet.attn_processors.keys():
         if "attn2" in name:
+            # hidden_size = output dim of the to_k projection = num_heads * head_dim
+            to_k_key = name.replace(".processor", ".to_k.weight")
+            if to_k_key in unet_sd:
+                hidden_size = unet_sd[to_k_key].shape[0]
+            else:
+                hidden_size = cross_attn_dim  # fallback
             attn_procs[name] = IPAdapterAttnProcessor(
-                hidden_size=unet.config.attention_head_dim * 8,
+                hidden_size=hidden_size,
                 cross_attention_dim=cross_attn_dim,
                 num_tokens=num_tokens,
             )
@@ -314,6 +322,7 @@ def train(config: dict) -> None:
             from diffusers.models.attention_processor import AttnProcessor2_0
             attn_procs[name] = AttnProcessor2_0()
     unet.set_attn_processor(attn_procs)
+
 
     # ── Freeze everything except IP-Adapter modules ──
     vae.requires_grad_(False)
