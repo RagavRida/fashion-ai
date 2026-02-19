@@ -1,0 +1,70 @@
+# ──────────────────────────────────────────────────
+# Fashion Reuse Studio — Inference Configuration
+# ──────────────────────────────────────────────────
+
+models:
+  base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+  lora_weights: "checkpoints/fashion_lora"
+  controlnet_weights: "checkpoints/fashion_controlnet"
+  ip_adapter_weights: "checkpoints/fashion_ip_adapter"
+  segmentation_model: "checkpoints/garment_segmentation.pth"
+  vae_model: "madebyollin/sdxl-vae-fp16-fix"
+  clip_model: "openai/clip-vit-large-patch14"
+
+  # LoRA weight scale
+  lora_scale: 0.85
+  # IP-Adapter scale (0.0–1.0, higher = more reference)
+  ip_adapter_scale: 0.7
+  # ControlNet conditioning scale
+  controlnet_scale: 0.8
+
+generation:
+  resolution: 512
+  num_inference_steps: 50
+  guidance_scale: 7.5
+  num_images_per_prompt: 8    # generate 8, rank to top 4
+  top_k_return: 4
+  seed: null                   # null = random
+
+  # Inpainting / refinement
+  strength: 0.75               # img2img strength (0.0–1.0)
+  inpaint_strength: 0.6        # for localized region edits
+
+  # Negative prompt
+  negative_prompt: >
+    blurry, low quality, distorted, deformed limbs, melted fabric,
+    ugly, double exposure, oversaturated, cartoon, anime, sketch, watermark
+
+  # Prompt suffix always appended
+  prompt_suffix: "high realism, professional fashion photography, detailed fabric texture, 8k"
+
+edge_extraction:
+  canny_low: 100
+  canny_high: 200
+  resize_to: 512
+
+ranking:
+  clip_weight: 0.40
+  mask_alignment_weight: 0.25
+  edge_alignment_weight: 0.20
+  aesthetic_weight: 0.15
+  lpips_lower_bound: 0.3       # penalize if too similar to input
+
+diy_guide:
+  llm_provider: "openai"       # openai | anthropic | local
+  openai_model: "gpt-4o"
+  anthropic_model: "claude-3-5-sonnet-20241022"
+  local_endpoint: "http://localhost:11434/api/generate"
+  local_model: "llama3.2"
+  max_tokens: 1500
+  temperature: 0.3
+
+device:
+  use_cuda: true
+  device_map: "auto"
+  dtype: "float16"
+  compile_model: false         # torch.compile (optional speedup)
+
+cache:
+  enable_model_cache: true
+  cache_dir: ".cache/models"

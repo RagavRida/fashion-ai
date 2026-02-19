@@ -1,0 +1,63 @@
+# ──────────────────────────────────────────────────
+# Fashion Reuse Studio — Dataset Configuration
+# ──────────────────────────────────────────────────
+
+dataset:
+  name: deepfashion
+  version: "category_attribute_prediction"
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  images_dir: "data/processed/images_512"
+  masks_dir: "data/processed/masks"
+  edges_dir: "data/processed/edges"
+  prompts_dir: "data/processed/prompts"
+  metadata_jsonl: "data/processed/metadata.jsonl"
+
+preprocessing:
+  image_size: 512
+  crop_mode: "center"          # center | adaptive | face-safe
+  normalize: true
+  augment: true
+  augmentation:
+    horizontal_flip: true
+    color_jitter: 0.1
+    random_crop_scale: [0.85, 1.0]
+  num_workers: 8
+
+edge_extraction:
+  method: "canny"              # canny | hed | mlsd
+  canny_low: 100
+  canny_high: 200
+  blur_kernel: 3
+
+mask_generation:
+  method: "sam"                # sam | grabcut | pseudo
+  sam_model_type: "vit_h"
+  sam_checkpoint: "checkpoints/sam_vit_h_4b8939.pth"
+  grabcut_iters: 5
+
+prompt_generation:
+  style_keywords:
+    - "streetwear"
+    - "formal"
+    - "casual"
+    - "bohemian"
+    - "athleisure"
+    - "vintage"
+    - "minimalist"
+  sustainability_tags:
+    - "upcycled"
+    - "recycled fabric"
+    - "eco-friendly"
+    - "sustainable fashion"
+  quality_suffix: "high realism, detailed fabric texture, professional fashion photography"
+
+splits:
+  train: 0.85
+  val: 0.10
+  test: 0.05
+
+limits:
+  max_train_samples: null      # null = use all
+  max_val_samples: 2000
+  min_image_size: 256          # skip images smaller than this

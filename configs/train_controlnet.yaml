@@ -1,0 +1,66 @@
+# ──────────────────────────────────────────────────
+# Fashion Reuse Studio — ControlNet Training Config
+# ──────────────────────────────────────────────────
+
+model:
+  base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+  lora_weights: "checkpoints/fashion_lora"   # load pre-trained LoRA first
+  controlnet_model_name_or_path: null        # null = train from scratch using base UNet
+  conditioning_channels: 3                   # RGB canny/edge map
+
+conditioning:
+  type: "canny"                # canny | hed | seg_mask | pose | combined
+  combined_mode: false
+  combined_signals:
+    - "canny"
+    - "seg_mask"
+
+training:
+  output_dir: "checkpoints/fashion_controlnet"
+  logging_dir: "outputs/logs/controlnet"
+  resolution: 512
+  train_batch_size: 2
+  gradient_accumulation_steps: 8
+  num_train_epochs: 50
+  max_train_steps: 50000
+  learning_rate: 1.0e-5
+  lr_scheduler: "constant_with_warmup"
+  lr_warmup_steps: 1000
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  conditioning_dropout_prob: 0.05     # randomly drop conditioning for cfg-style training
+  proportional_attention: true
+
+precision:
+  mixed_precision: "fp16"
+  gradient_checkpointing: true
+  enable_xformers: true
+  use_8bit_adam: false
+
+checkpointing:
+  save_steps: 2000
+  save_total_limit: 3
+  resume_from_checkpoint: "latest"
+
+logging:
+  report_to: "wandb"
+  wandb_project: "fashion-reuse-studio"
+  wandb_run_name: "controlnet-canny-deepfashion"
+  logging_steps: 100
+
+validation:
+  validation_steps: 2000
+  num_validation_images: 4
+  validation_image: "data/processed/edges/val_sample_001.png"
+  validation_prompt: "a upcycled denim jacket, cropped, streetwear style"
+
+data:
+  train_data_dir: "data/processed"
+  metadata_file: "data/processed/metadata.jsonl"
+  image_column: "image_path"
+  conditioning_image_column: "edge_path"
+  caption_column: "prompt"
+  dataloader_num_workers: 4

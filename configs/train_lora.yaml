@@ -1,0 +1,77 @@
+# ──────────────────────────────────────────────────
+# Fashion Reuse Studio — LoRA Fine-tuning Config
+# ──────────────────────────────────────────────────
+
+model:
+  base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+  fallback_model: "runwayml/stable-diffusion-v1-5"
+  use_sdxl: true               # set false to use SD 1.5
+  vae_model: "madebyollin/sdxl-vae-fp16-fix"
+  revision: null
+
+lora:
+  rank: 64
+  alpha: 64
+  dropout: 0.0
+  target_modules:
+    - "to_q"
+    - "to_k"
+    - "to_v"
+    - "to_out.0"
+    - "proj_in"
+    - "proj_out"
+    - "ff.net.0.proj"
+    - "ff.net.2"
+  bias: "none"
+
+training:
+  output_dir: "checkpoints/fashion_lora"
+  logging_dir: "outputs/logs/lora"
+  resolution: 512
+  train_batch_size: 4
+  gradient_accumulation_steps: 4
+  num_train_epochs: 100
+  max_train_steps: 80000
+  learning_rate: 1.0e-4
+  lr_scheduler: "cosine_with_restarts"
+  lr_warmup_steps: 500
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  noise_offset: 0.05
+  snr_gamma: 5.0
+
+precision:
+  mixed_precision: "fp16"    # fp16 | bf16 | no
+  gradient_checkpointing: true
+  enable_xformers: true
+  use_8bit_adam: false
+
+checkpointing:
+  save_steps: 2000
+  save_total_limit: 5
+  resume_from_checkpoint: "latest"   # null | latest | path
+
+logging:
+  report_to: "wandb"
+  wandb_project: "fashion-reuse-studio"
+  wandb_run_name: "lora-sdxl-deepfashion"
+  logging_steps: 100
+
+validation:
+  validation_prompts:
+    - "a upcycled denim jacket, cropped, streetwear style, high realism"
+    - "a recycled cotton dress, floral pattern, summer casual, eco-friendly"
+    - "a formal blazer, minimalist design, professional, high realism"
+  num_validation_images: 4
+  validation_steps: 2000
+
+data:
+  train_data_dir: "data/processed"
+  metadata_file: "data/processed/metadata.jsonl"
+  caption_column: "prompt"
+  image_column: "image_path"
+  dataloader_num_workers: 8
+  shuffle: true

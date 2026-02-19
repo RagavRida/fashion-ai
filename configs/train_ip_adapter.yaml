@@ -1,0 +1,62 @@
+# ──────────────────────────────────────────────────
+# Fashion Reuse Studio — IP-Adapter Training Config
+# ──────────────────────────────────────────────────
+
+model:
+  base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+  lora_weights: "checkpoints/fashion_lora"
+  controlnet_weights: "checkpoints/fashion_controlnet"
+  image_encoder: "openai/clip-vit-large-patch14"
+  ip_adapter_output_dir: "checkpoints/fashion_ip_adapter"
+
+  # IP-Adapter architecture
+  num_tokens: 16              # number of image tokens
+  projection_dim: 1024        # image embedding projection size
+
+training:
+  output_dir: "checkpoints/fashion_ip_adapter"
+  logging_dir: "outputs/logs/ip_adapter"
+  resolution: 512
+  train_batch_size: 4
+  gradient_accumulation_steps: 4
+  num_train_epochs: 30
+  max_train_steps: 30000
+  learning_rate: 1.0e-4
+  lr_scheduler: "cosine"
+  lr_warmup_steps: 500
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  uncond_ratio: 0.1           # drop image conditioning for cfg training
+
+precision:
+  mixed_precision: "fp16"
+  gradient_checkpointing: true
+  enable_xformers: true
+
+checkpointing:
+  save_steps: 1000
+  save_total_limit: 3
+  resume_from_checkpoint: "latest"
+
+logging:
+  report_to: "wandb"
+  wandb_project: "fashion-reuse-studio"
+  wandb_run_name: "ip-adapter-deepfashion"
+  logging_steps: 50
+
+validation:
+  validation_steps: 1000
+  num_validation_images: 4
+  validation_image: "data/processed/images_512/val_sample_001.jpg"
+  validation_prompt: "redesign this garment in bohemian style"
+
+data:
+  train_data_dir: "data/processed"
+  metadata_file: "data/processed/metadata.jsonl"
+  image_column: "image_path"
+  caption_column: "prompt"
+  dataloader_num_workers: 4
+  use_image_augmentation: true
