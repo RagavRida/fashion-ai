@@ -211,9 +211,9 @@ def train(config: dict) -> None:
         controlnet, optimizer, loader, lr_scheduler
     )
     vae = vae.to(accelerator.device, dtype=torch.float16)
-    unet = unet.to(accelerator.device)
-    text_encoder = text_encoder.to(accelerator.device)
-    text_encoder_2 = text_encoder_2.to(accelerator.device)
+    unet = unet.to(accelerator.device, dtype=torch.float16)
+    text_encoder = text_encoder.to(accelerator.device, dtype=torch.float16)
+    text_encoder_2 = text_encoder_2.to(accelerator.device, dtype=torch.float16)
 
     global_step = 0
     max_steps = config["training"]["max_train_steps"]
