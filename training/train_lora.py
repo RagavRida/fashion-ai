@@ -302,8 +302,8 @@ def train(config: dict, dry_run: bool = False) -> None:
                     enc2_out = text_encoder_2(batch.get("input_ids_2", batch["input_ids"]))
                     # enc2_out[0] = last_hidden_state [B, seq, D2]
                     # enc2_out[1] = pooled output [B, D2] for added_cond_kwargs
-                    encoder_hidden_states_2 = enc2_out[0]  # [B, 77, 1280]
-                    pooled_output_2 = enc2_out[1]           # [B, 1280]
+                    encoder_hidden_states_2 = enc2_out.last_hidden_state  # [B, 77, 1280]
+                    pooled_output_2 = enc2_out.text_embeds                 # [B, 1280]
                     # SDXL UNet expects cat of both text encoder hidden states along dim=-1
                     # enc1: [B, 77, 768], enc2: [B, 77, 1280] → [B, 77, 2048]
                     combined_hidden_states = torch.cat(
