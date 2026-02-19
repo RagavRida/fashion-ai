@@ -311,16 +311,16 @@ def train(config: dict) -> None:
                     return_dict=False,
                 )
 
-                # UNet forward pass (frozen, fp32)
-                with torch.no_grad():
-                    model_pred = unet(
-                        nl_f32,
-                        timesteps,
-                        encoder_hidden_states=hs_f32,
-                        down_block_additional_residuals=[r.float() for r in down_block_res],
-                        mid_block_additional_residual=mid_block_res.float(),
-                        added_cond_kwargs=acond_f32,
-                    ).sample
+                # UNet forward (frozen params via requires_grad_=False, no torch.no_grad() so
+                # gradients flow through ControlNet residuals back to ControlNet params)
+                model_pred = unet(
+                    nl_f32,
+                    timesteps,
+                    encoder_hidden_states=hs_f32,
+                    down_block_additional_residuals=[r.float() for r in down_block_res],
+                    mid_block_additional_residual=mid_block_res.float(),
+                    added_cond_kwargs=acond_f32,
+                ).sample
 
                 loss = torch.nn.functional.mse_loss(
                     model_pred.float(), noise.float()
